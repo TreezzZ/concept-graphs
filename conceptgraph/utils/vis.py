@@ -213,7 +213,7 @@ def vis_result_fast(
     )
     labels = [
         f"{classes[class_id]} {confidence:0.2f}" 
-        for _, _, confidence, class_id, _ 
+        for _, _, confidence, class_id, _, _
         in detections]
     
     if instance_random_color:

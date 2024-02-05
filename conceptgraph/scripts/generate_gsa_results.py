@@ -52,8 +52,8 @@ sys.path.append(GSA_PATH) # This is needed for the following imports in this fil
 sys.path.append(TAG2TEXT_PATH) # This is needed for some imports in the Tag2Text files
 sys.path.append(EFFICIENTSAM_PATH)
 try:
-    from Tag2Text.models import tag2text
-    from Tag2Text import inference_tag2text, inference_ram
+    from ram.models import tag2text
+    from ram import inference_tag2text, inference_ram
     import torchvision.transforms as TS
 except ImportError as e:
     print("Tag2text sub-package not found. Please check your GSA_PATH. ")
