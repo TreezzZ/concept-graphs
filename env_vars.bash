@@ -2,7 +2,7 @@
 # Example script setting up the rnv variables needed for running ConceptGraphs
 # Please adapt it to your own paths!
 
-BASE_FOLDER=/scratch/shuzhaoProject/TaskLMM
+BASE_FOLDER=/scratch/shuzhao/Project/TaskLMM/
 CODE_FOLDER=$BASE_FOLDER/Code
 DATA_FOLDER=$BASE_FOLDER/Data
 
