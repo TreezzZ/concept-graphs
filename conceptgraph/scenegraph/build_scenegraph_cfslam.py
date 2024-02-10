@@ -43,6 +43,7 @@ hf_logging.set_verbosity_error()
 import openai
 
 openai.api_key = os.getenv("OPENAI_API_KEY")
+openai.organization = os.getenv("OPENAI_ORGANIZATION")
 
 
 @dataclass
