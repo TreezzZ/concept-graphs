@@ -65,7 +65,7 @@ class ProgramArgs:
     mapfile: str = "saved/room0/map/scene_map_cfslam.pkl.gz"
 
     # Path to file storing segment class names
-    class_names_file: str = "saved/room0/gsa_classes_ram.json"
+    #class_names_file: str = "saved/room0/gsa_classes_ram.json"
 
     # Device to use
     device: str = "cuda:0"
@@ -282,10 +282,10 @@ def extract_node_captions(args):
     # )
 
     # Load class names from the json file
-    class_names = None
-    with open(Path(args.class_names_file), "r") as f:
-        class_names = json.load(f)
-    print(class_names)
+    #class_names = None
+    #with open(Path(args.class_names_file), "r") as f:
+    #    class_names = json.load(f)
+    #print(class_names)
 
     # Creating a namespace object to pass args to the LLaVA chat object
     chat_args = SimpleNamespace()
@@ -336,7 +336,7 @@ def extract_node_captions(args):
             image = Image.open(obj["color_path"][idx_det]).convert("RGB")
             xyxy = obj["xyxy"][idx_det]
             class_id = obj["class_id"][idx_det]
-            class_name = class_names[class_id]
+            #class_name = class_names[class_id]
             # Retrieve and crop mask
             mask = obj["mask"][idx_det]
 
