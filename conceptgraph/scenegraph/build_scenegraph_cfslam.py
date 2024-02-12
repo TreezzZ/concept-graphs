@@ -39,12 +39,6 @@ from transformers import logging as hf_logging
 torch.autograd.set_grad_enabled(False)
 hf_logging.set_verbosity_error()
 
-# Import OpenAI API
-import openai
-
-openai.api_key = os.getenv("OPENAI_API_KEY")
-openai.organization = os.getenv("OPENAI_ORGANIZATION")
-
 
 @dataclass
 class ProgramArgs:
@@ -261,6 +255,7 @@ def plot_images_with_captions(images, captions, confidences, low_confidences, ma
 
 def extract_node_captions(args):
     from conceptgraph.llava.llava_model import LLaVaChat
+    from conceptgraph.llava.llava_inference import LLaVaInference
 
     # NOTE: args.mapfile is in cfslam format
     from conceptgraph.slam.slam_classes import MapObjectList
@@ -289,15 +284,18 @@ def extract_node_captions(args):
 
     # Creating a namespace object to pass args to the LLaVA chat object
     chat_args = SimpleNamespace()
-    chat_args.model_path = os.getenv("LLAVA_MODEL_PATH")
-    chat_args.conv_mode = "v0_mmtag" # "multimodal"
-    chat_args.num_gpus = 1
+    chat_args.model_path = os.getenv("LLAVA_CKPT_PATH")
+    chat_args.device = torch.device("cuda:0")
+    chat_args.feature_selection = "token"
+    #chat_args.conv_mode = "v0_mmtag" # "multimodal"
+    #chat_args.num_gpus = 1
 
     # rich console for pretty printing
     console = rich.console.Console()
 
     # Initialize LLaVA chat
-    chat = LLaVaChat(chat_args.model_path, chat_args.conv_mode, chat_args.num_gpus)
+    #chat = LLaVaChat(chat_args.model_path, chat_args.conv_mode, chat_args.num_gpus)
+    chat = LLaVaInference(chat_args.model_path, chat_args.device)
     # chat = LLaVaChat(chat_args)
     print("LLaVA chat initialized...")
     query = "Describe the central object in the image."
@@ -359,16 +357,14 @@ def extract_node_captions(args):
                 continue
             else:
                 low_confidences.append(False)
-
-            # image_tensor = chat.image_processor.preprocess(image_crop, return_tensors="pt")["pixel_values"][0]
-            image_tensor = chat.image_processor.preprocess(image_crop_modified, return_tensors="pt")["pixel_values"][0]
-
-            image_features = chat.encode_image(image_tensor[None, ...].half().cuda())
-            features.append(image_features.detach().cpu())
+                
+            #image_features = chat.encode_image_without_proj(image_crop_modified, feature_select=chat_args.feature_selection).detach().cpu()
+            #features.append(image_features)
 
             chat.reset()
             console.print("[bold red]User:[/bold red] " + query)
-            outputs = chat(query=query, image_features=image_features)
+            outputs, image_features = chat.generate(message=query, image=image_crop_modified)
+            features.append(image_features.detach().cpu())
             console.print("[bold green]LLaVA:[/bold green] " + outputs)
             captions.append(outputs)
         
@@ -421,6 +417,12 @@ def refine_node_captions(args):
     # NOTE: args.mapfile is in cfslam format
     from conceptgraph.slam.slam_classes import MapObjectList
     from conceptgraph.scenegraph.GPTPrompt import GPTPrompt
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ.get("OPENAI_API_KEY"),
+        organization=os.environ.get("OPENAI_ORGANIZATION")
+    )
 
     # Load the captions for each segment
     caption_file = Path(args.cachedir) / "cfslam_llava_captions.json"
@@ -472,12 +474,12 @@ def refine_node_captions(args):
     
         curr_chat_messages = gpt_messages[:]
         curr_chat_messages.append({"role": "user", "content": preds})
-        chat_completion = openai.ChatCompletion.create(
-            # model="gpt-3.5-turbo",
-            model="gpt-4",
+        chat_completion = client.chat.completions.create(
             messages=curr_chat_messages,
-            timeout=TIMEOUT,  # Timeout in seconds
+            model="gpt-4",
+            timeout=TIMEOUT,
         )
+        gpt_response = chat_completion.choices[0].message.content
         elapsed_time = time.time() - start_time
         if elapsed_time > TIMEOUT:
             print("Timed out exceeded!")
@@ -489,14 +491,14 @@ def refine_node_captions(args):
             continue
         
         # count unsucessful responses
-        if "invalid" in chat_completion["choices"][0]["message"]["content"].strip("\n"):
+        if "invalid" in gpt_response.strip("\n"):
             unsucessful_responses += 1
             
         # print output
         prjson([{"role": "user", "content": preds}])
-        print(chat_completion["choices"][0]["message"]["content"])
+        print(gpt_response)
         print(f"Unsucessful responses so far: {unsucessful_responses}")
-        _dict["response"] = chat_completion["choices"][0]["message"]["content"].strip("\n")
+        _dict["response"] = gpt_response.strip("\n")
         
         # save the response
         responses.append(json.dumps(_dict))
@@ -555,6 +557,12 @@ def extract_object_tag_from_json_str(json_str):
 def build_scenegraph(args):
     from conceptgraph.slam.slam_classes import MapObjectList
     from conceptgraph.slam.utils import compute_overlap_matrix
+    from openai import OpenAI
+
+    client = OpenAI(
+        api_key=os.environ.get("OPENAI_API_KEY"),
+        organization=os.environ.get("OPENAI_ORGANIZATION")
+    )
 
     # Load the scene map
     scene_map = MapObjectList()
@@ -753,12 +761,12 @@ def build_scenegraph(args):
                     """
 
                     start_time = time.time()
-                    chat_completion = openai.ChatCompletion.create(
-                        # model="gpt-3.5-turbo",
-                        model="gpt-4",
+                    chat_completion = client.chat.completions.create(
                         messages=[{"role": "user", "content": DEFAULT_PROMPT + "\n\n" + input_json_str}],
-                        timeout=TIMEOUT,  # Timeout in seconds
+                        model="gpt-4",
+                        timeout=TIMEOUT,
                     )
+                    gpt_response = chat_completion.choices[0].message.content
                     elapsed_time = time.time() - start_time
                     output_dict = input_dict
                     if elapsed_time > TIMEOUT:
@@ -768,7 +776,7 @@ def build_scenegraph(args):
                     else:
                         try:
                             # Attempt to parse the output as a JSON
-                            chat_output_json = json.loads(chat_completion["choices"][0]["message"]["content"])
+                            chat_output_json = json.loads(gpt_response)
                             # If the output is a valid JSON, then add it to the output dictionary
                             output_dict["object_relation"] = chat_output_json["object_relation"]
                             output_dict["reason"] = chat_output_json["reason"]
